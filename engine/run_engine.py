@@ -26,29 +26,44 @@ from vortex.risk import RiskConfig
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 ENGINE_TOKEN = os.environ.get("ENGINE_TOKEN", "")
-SYMBOL = os.environ.get("VORTEX_YF_SYMBOL", "GC=F")  # initial dev data source (gold futures)
+SYMBOL = os.environ.get("VORTEX_YF_SYMBOL", "GC=F")  # initial dev data source: Yahoo gold futures
 START_BALANCE = float(os.environ.get("VORTEX_START_BALANCE", "1000"))
 ENGINE_DB = os.environ.get("VORTEX_ENGINE_DB", "engine.db")
 CANDLE_SECONDS = 300
 
 
-def fetch_candles() -> pd.DataFrame:
-    import yfinance as yf
+def parse_yahoo_chart(payload: dict) -> pd.DataFrame:
+    """Turn Yahoo's chart JSON into an OHLC DataFrame (UTC index), dropping empty candles."""
+    result = payload["chart"]["result"][0]
+    q = result["indicators"]["quote"][0]
+    df = pd.DataFrame(
+        {"Open": q["open"], "High": q["high"], "Low": q["low"], "Close": q["close"]},
+        index=pd.to_datetime(result["timestamp"], unit="s", utc=True),
+    ).dropna()
+    if df.empty:
+        raise RuntimeError("No market data returned (market closed?)")
+    return df
 
-    df = yf.download(SYMBOL, period="5d", interval="5m", progress=False, auto_adjust=False)
-    if df is None or df.empty:
-        raise RuntimeError("No market data returned (market closed or network issue)")
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    return df[["Open", "High", "Low", "Close"]].dropna()
+
+def fetch_candles() -> pd.DataFrame:
+    import json
+    import urllib.request
+
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{SYMBOL}?interval=5m&range=5d"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (VORTEX engine)"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return parse_yahoo_chart(json.loads(r.read()))
 
 
 def api(path: str, payload: dict):
-    import httpx
+    import json
+    import urllib.request
 
-    r = httpx.post(BACKEND_URL + path, headers={"X-Engine-Token": ENGINE_TOKEN}, json=payload, timeout=20)
-    r.raise_for_status()
-    return r.json()
+    req = urllib.request.Request(
+        BACKEND_URL + path, data=json.dumps(payload).encode(), method="POST",
+        headers={"Content-Type": "application/json", "X-Engine-Token": ENGINE_TOKEN})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read() or b"{}")
 
 
 def open_account():

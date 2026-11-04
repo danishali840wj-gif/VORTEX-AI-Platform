@@ -8,7 +8,7 @@ AI-based gold (XAU/USD) analysis and **paper-trading** platform with an Android 
 
 | Folder | What it is |
 |---|---|
-| `backend/` | FastAPI + SQLite: register/login, subscription keys, admin API, signals, paper trades |
+| `backend/` | Pure-Python server (`server.py`) + SQLite: register/login, subscription keys, admin API, signals, paper trades |
 | `backend/static/admin.html` | Admin panel (open `/admin`): generate keys (30d/90d/1y), users, block/unblock, deactivate, history |
 | `engine/` | AI engine: `vortex/` (risk manager, paper account, DB - from your Stage 1 ZIP, unchanged), `indicators.py` + `strategy.py` (BUY/SELL/WAIT), `run_engine.py` (runner) |
 | `app/` | Android app (Capacitor wrapper around `app/www`) |
@@ -21,33 +21,29 @@ AI-based gold (XAU/USD) analysis and **paper-trading** platform with an Android 
 3. Customer enters the key in the app -> backend verifies, binds key to the account, sets expiry.
 4. A key works once only. Admin can revoke unused keys, block users, deactivate subscriptions.
 
-## Run locally
+## Run (Termux or Linux) - one command
 
 ```bash
-cp .env.example .env        # then edit secrets
-cd backend && pip install -r requirements.txt
-export $(grep -v '^#' ../.env | xargs)
-uvicorn main:app --host 0.0.0.0 --port 8000
+git clone https://github.com/danishali840wj-gif/VORTEX-AI-Platform
+cd VORTEX-AI-Platform
+bash run.sh
 ```
 
-Admin panel: `http://localhost:8000/admin` (enter your `ADMIN_TOKEN`).
+`run.sh` installs pandas/numpy if missing, creates `.env` with random secrets (first time only), starts the backend and the engine, and prints your **admin token**.
+Stop everything: `bash stop.sh`.
 
-Engine (second terminal):
-
-```bash
-cd engine && pip install -r requirements.txt
-export $(grep -v '^#' ../.env | xargs)
-python run_engine.py
-```
+- Admin panel: `http://127.0.0.1:8000/admin` (paste the admin token).
+- Backend is pure Python standard library (no pip needed). Engine needs only pandas + numpy.
+- Logs: `logs/backend.log`, `logs/engine.log`.
 
 ## Build the APK
 
-1. Set your backend URL in `app/www/config.js` (`API_BASE`).
-2. Push to GitHub -> Actions -> **Build VORTEX AI APK** -> download `VORTEX-AI-debug-apk`.
+Every push to `main` that touches `app/` builds the APK in GitHub Actions and publishes it under **Releases** (`VORTEX-AI.apk`).
+The app talks to `http://127.0.0.1:8000` by default (backend on the same phone). To use another server: Login screen -> **Server: change URL**.
 
 ## Status
 
 - `engine/vortex/` is your Stage 1 code (risk 1.7% / reward 5% / daily loss limit 5% / max 2 open trades / 20x leverage cap / emergency stop). Its 15 original tests pass.
 - The Stage 1 ZIP had no strategy, so `engine/strategy.py` is a clean baseline (EMA/RSI/ADX/ATR + 15m confirmation). The original VORTEX V3 signal logic is still to be merged in.
-- Run engine tests: `cd engine && python -m unittest discover -s tests -t .`
+- Tests: `cd engine && python -m unittest discover -s tests -t .` and `cd backend && python -m unittest discover -s tests -t .`
 - Never commit `.env`, API keys or passwords.

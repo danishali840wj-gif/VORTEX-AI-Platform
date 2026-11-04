@@ -85,6 +85,20 @@ class EngineWiringTests(unittest.TestCase):
                     self.assertIn(k, t)
         self.assertGreater(traded, 0, "no trade was ever closed on any synthetic seed - strategy never triggered")
 
+    def test_parse_yahoo_chart_drops_empty_candles(self):
+        payload = {"chart": {"result": [{
+            "timestamp": [1767571200, 1767571500, 1767571800],
+            "indicators": {"quote": [{
+                "open": [2000.0, None, 2001.0], "high": [2001.0, None, 2002.0],
+                "low": [1999.0, None, 2000.0], "close": [2000.5, None, 2001.5]}]}}]}}
+        df = run_engine.parse_yahoo_chart(payload)
+        self.assertEqual(len(df), 2)
+        self.assertEqual(list(df.columns), ["Open", "High", "Low", "Close"])
+        self.assertEqual(str(df.index.tz), "UTC")
+        empty = {"chart": {"result": [{"timestamp": [1], "indicators": {"quote": [{"open": [None], "high": [None], "low": [None], "close": [None]}]}}]}}
+        with self.assertRaises(RuntimeError):
+            run_engine.parse_yahoo_chart(empty)
+
     def test_push_failure_does_not_crash(self):
         df = synthetic()
         conn = connect(":memory:")
