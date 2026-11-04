@@ -40,6 +40,7 @@
     <div id="a_err" class="err"></div>
     <button id="a_btn">Login</button>
     <button id="a_toggle" class="link" style="width:100%">New here? Register</button>
+    <button id="a_server" class="link" style="width:100%;color:var(--mut)">Server: change URL</button>
   </div>
 
   <!-- LOCKED -->
@@ -99,7 +100,7 @@
 
 <script src="config.js"></script>
 <script>
-const API = (window.VORTEX_CONFIG||{}).API_BASE || '';
+let API = localStorage.getItem('vtx_api') || (window.VORTEX_CONFIG||{}).API_BASE || '';
 const $ = id => document.getElementById(id);
 const show = id => ['auth','locked','main'].forEach(x => $(x).classList.toggle('hide', x!==id));
 let token = localStorage.getItem('vtx_token') || '';
@@ -114,6 +115,12 @@ async function api(path, method='GET', body){
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const money = n => (n<0?'-':'')+'$'+Math.abs(n).toFixed(2);
 const fmtDate = d => d ? d.replace('T',' ').slice(0,16)+' UTC' : '—';
+
+/* server url (so the backend address can be changed without rebuilding the APK) */
+$('a_server').onclick = () => {
+  const v = prompt('Backend server URL', API);
+  if(v && v.trim()){ API = v.trim().replace(/\/+$/,''); localStorage.setItem('vtx_api', API); $('a_err').textContent = 'Server set: '+API; }
+};
 
 /* auth */
 $('a_toggle').onclick = () => {

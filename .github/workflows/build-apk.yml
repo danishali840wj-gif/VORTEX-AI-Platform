@@ -6,12 +6,12 @@ on:
     branches: [main]
     paths: ["app/**", ".github/workflows/build-apk.yml"]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -25,20 +25,31 @@ jobs:
           java-version: 17
 
       - name: Install dependencies
+        working-directory: app
         run: npm install
 
       - name: Add Android platform
+        working-directory: app
         run: npx cap add android
 
       - name: Sync web assets
+        working-directory: app
         run: npx cap sync android
 
       - name: Build debug APK
         working-directory: app/android
         run: ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: VORTEX-AI-debug-apk
           path: app/android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish APK as GitHub Release (easy phone download)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk VORTEX-AI.apk
+          TAG="apk-build-${{ github.run_number }}"
+          gh release create "$TAG" VORTEX-AI.apk --title "VORTEX AI APK build ${{ github.run_number }}" --notes "Debug APK built from commit ${{ github.sha }}" --latest
