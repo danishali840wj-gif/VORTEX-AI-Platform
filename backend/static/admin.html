@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VORTEX Admin</title>
+<style>
+  :root{--bg:#0d1117;--card:#161b22;--line:#30363d;--fg:#e6edf3;--mut:#8b949e;--acc:#d4a017;--ok:#3fb950;--bad:#f85149}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif;padding:16px;max-width:1000px;margin:auto}
+  h1{color:var(--acc);margin:0 0 12px;font-size:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+  input,select,button{background:#0d1117;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px}
+  button{background:var(--acc);color:#111;border:0;font-weight:600;cursor:pointer} button.sec{background:#21262d;color:var(--fg);border:1px solid var(--line)}
+  button.bad{background:var(--bad);color:#fff} .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .tabs button{background:#21262d;color:var(--fg)} .tabs button.on{background:var(--acc);color:#111}
+  table{width:100%;border-collapse:collapse;font-size:13px} th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:500} .wrap{overflow-x:auto} code{color:var(--acc)} .ok{color:var(--ok)} .bad-t{color:var(--bad)} .mut{color:var(--mut)}
+  #msg{min-height:20px;margin:6px 0}
+</style>
+</head>
+<body>
+<h1>VORTEX AI — Admin Panel</h1>
+
+<div class="card row">
+  <input id="tok" type="password" placeholder="Admin token" style="flex:1;min-width:200px">
+  <button onclick="saveTok()">Connect</button>
+</div>
+<div id="msg" class="mut"></div>
+
+<div class="tabs row" style="margin-bottom:12px">
+  <button class="on" data-t="keys">Keys</button>
+  <button data-t="users">Users</button>
+  <button data-t="hist">History</button>
+</div>
+
+<div id="keys" class="card">
+  <div class="row">
+    <select id="dur"><option value="30d" selected>30 days</option><option value="90d">90 days</option><option value="1y">1 year</option></select>
+    <input id="cnt" type="number" min="1" max="100" value="1" style="width:80px">
+    <input id="note" placeholder="Note (customer name)" style="flex:1;min-width:140px">
+    <button onclick="genKeys()">Generate key</button>
+  </div>
+  <div id="newkeys" style="margin:10px 0"></div>
+  <div class="wrap"><table id="keyTbl"></table></div>
+</div>
+
+<div id="users" class="card" style="display:none">
+  <div class="wrap"><table id="userTbl"></table></div>
+</div>
+
+<div id="hist" class="card" style="display:none">
+  <div class="wrap"><table id="histTbl"></table></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let TOKEN = sessionStorage.getItem('vtx_admin') || '';
+$('tok').value = TOKEN;
+
+async function api(path, method='GET', body){
+  const r = await fetch(path, {method, headers:{'Content-Type':'application/json','X-Admin-Token':TOKEN}, body: body?JSON.stringify(body):undefined});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+}
+function msg(t, bad){ $('msg').textContent = t; $('msg').className = bad?'bad-t':'ok'; }
+function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmt(d){ return d ? d.replace('T',' ').slice(0,16) : '-'; }
+
+function saveTok(){ TOKEN = $('tok').value.trim(); sessionStorage.setItem('vtx_admin', TOKEN); loadAll(); }
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x===b));
+  ['keys','users','hist'].forEach(t => $(t).style.display = t===b.dataset.t ? '' : 'none');
+});
+
+async function genKeys(){
+  try{
+    const j = await api('/api/admin/keys/generate','POST',{duration:$('dur').value,count:+$('cnt').value||1,note:$('note').value});
+    $('newkeys').innerHTML = j.keys.map(k=>`<div><code>${esc(k)}</code> <button class="sec" onclick="navigator.clipboard.writeText('${esc(k)}')">Copy</button></div>`).join('');
+    msg('Keys generated'); loadKeys();
+  }catch(e){ msg(e.message,true); }
+}
+async function loadKeys(){
+  const j = await api('/api/admin/keys');
+  $('keyTbl').innerHTML = '<tr><th>Key</th><th>Duration</th><th>Status</th><th>Used by</th><th>Note</th><th></th></tr>' +
+    j.keys.map(k=>`<tr><td><code>${esc(k.key)}</code></td><td>${esc(k.duration)}</td><td>${esc(k.status)}</td><td>${esc(k.used_by_email||'-')}</td><td>${esc(k.note)}</td>
+    <td>${k.status==='unused'?`<button class="bad" onclick="revoke(${k.id})">Revoke</button>`:''}</td></tr>`).join('');
+}
+async function revoke(id){ try{ await api(`/api/admin/keys/${id}/revoke`,'POST'); loadKeys(); }catch(e){ msg(e.message,true);} }
+
+async function loadUsers(){
+  const j = await api('/api/admin/users');
+  $('userTbl').innerHTML = '<tr><th>ID</th><th>Email</th><th>Name</th><th>Subscription</th><th>Expires</th><th>Status</th><th></th></tr>' +
+    j.users.map(u=>`<tr><td>${u.id}</td><td>${esc(u.email)}</td><td>${esc(u.name)}</td>
+    <td class="${u.subscription_active?'ok':'mut'}">${u.subscription_active?'Active':'None'}</td><td>${fmt(u.sub_expires_at)}</td>
+    <td class="${u.blocked?'bad-t':''}">${u.blocked?'Blocked':'OK'}</td>
+    <td class="row">
+      ${u.blocked?`<button class="sec" onclick="act(${u.id},'unblock')">Unblock</button>`:`<button class="bad" onclick="act(${u.id},'block')">Block</button>`}
+      ${u.subscription_active?`<button class="sec" onclick="act(${u.id},'deactivate')">Deactivate</button>`:''}
+    </td></tr>`).join('');
+}
+async function act(id, what){ try{ await api(`/api/admin/users/${id}/${what}`,'POST'); loadUsers(); loadHist(); }catch(e){ msg(e.message,true);} }
+
+async function loadHist(){
+  const j = await api('/api/admin/history');
+  $('histTbl').innerHTML = '<tr><th>Time (UTC)</th><th>User</th><th>Event</th><th>Detail</th></tr>' +
+    j.history.map(h=>`<tr><td>${fmt(h.created_at)}</td><td>${esc(h.email||h.user_id)}</td><td>${esc(h.event)}</td><td class="mut">${esc(h.detail)}</td></tr>`).join('');
+}
+async function loadAll(){
+  try{ await Promise.all([loadKeys(), loadUsers(), loadHist()]); msg('Connected'); }
+  catch(e){ msg(e.message,true); }
+}
+if(TOKEN) loadAll();
+</script>
+</body>
+</html>

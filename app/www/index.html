@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VORTEX AI</title>
+<style>
+  :root{--bg:#0b0f14;--card:#141a22;--line:#262f3b;--fg:#e8eef5;--mut:#8896a6;--gold:#d4a017;--buy:#2ecc71;--sell:#ff5c5c;--wait:#8896a6}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .wrap{max-width:520px;margin:auto;padding:16px}
+  h1{margin:0;font-size:22px;color:var(--gold);letter-spacing:1px}
+  .sub{color:var(--mut);font-size:13px;margin:2px 0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  input{width:100%;background:#0b0f14;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:15px;margin-bottom:10px}
+  button{background:var(--gold);color:#111;border:0;border-radius:10px;padding:12px 16px;font-weight:700;font-size:15px;width:100%;cursor:pointer}
+  button.sec{background:#1d2530;color:var(--fg);border:1px solid var(--line)}
+  .link{background:none;color:var(--gold);border:0;width:auto;padding:6px;font-weight:500}
+  .err{color:var(--sell);min-height:18px;font-size:13px;margin:4px 0}
+  .tabs{display:flex;gap:6px;margin-bottom:14px}.tabs button{background:#1d2530;color:var(--fg);padding:10px;font-size:14px}.tabs button.on{background:var(--gold);color:#111}
+  .sig{font-size:44px;font-weight:800;text-align:center;margin:6px 0}.BUY{color:var(--buy)}.SELL{color:var(--sell)}.WAIT{color:var(--wait)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.kv{background:#0b0f14;border:1px solid var(--line);border-radius:10px;padding:10px}
+  .kv b{display:block;font-size:12px;color:var(--mut);font-weight:500}.kv span{font-size:16px;font-weight:600}
+  .mut{color:var(--mut);font-size:13px}.pos{color:var(--buy)}.neg{color:var(--sell)}
+  table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 4px;text-align:left;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:500}
+  .hide{display:none}
+  .lock{text-align:center}.lock .big{font-size:42px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>VORTEX AI</h1>
+  <div class="sub">Gold (XAU/USD) analysis · Paper trading</div>
+
+  <!-- AUTH -->
+  <div id="auth" class="card hide">
+    <input id="a_name" class="hide" placeholder="Name">
+    <input id="a_email" type="email" placeholder="Email" autocomplete="username">
+    <input id="a_pass" type="password" placeholder="Password (min 6)" autocomplete="current-password">
+    <div id="a_err" class="err"></div>
+    <button id="a_btn">Login</button>
+    <button id="a_toggle" class="link" style="width:100%">New here? Register</button>
+  </div>
+
+  <!-- LOCKED -->
+  <div id="locked" class="card lock hide">
+    <div class="big">🔒</div>
+    <h3>Subscription required</h3>
+    <p class="mut" id="lock_msg">Message the admin to buy an activation key, then enter it below.</p>
+    <input id="k_in" placeholder="VTX-XXXX-XXXX-XXXX" autocapitalize="characters">
+    <div id="k_err" class="err"></div>
+    <button id="k_btn">Activate key</button>
+    <button id="lock_logout" class="link" style="width:100%">Logout</button>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main" class="hide">
+    <div class="tabs">
+      <button data-tab="t_sig" class="on">Signal</button>
+      <button data-tab="t_paper">Paper</button>
+      <button data-tab="t_prof">Profile</button>
+    </div>
+
+    <div id="t_sig">
+      <div class="card">
+        <div class="mut" id="s_meta">Loading…</div>
+        <div class="sig WAIT" id="s_sig">—</div>
+        <div class="mut" style="text-align:center" id="s_reason"></div>
+      </div>
+      <div class="grid" id="s_grid"></div>
+    </div>
+
+    <div id="t_paper" class="hide">
+      <div class="card">
+        <div class="grid">
+          <div class="kv"><b>Balance (demo)</b><span id="p_bal">—</span></div>
+          <div class="kv"><b>Total P/L</b><span id="p_pnl">—</span></div>
+          <div class="kv"><b>Win rate</b><span id="p_wr">—</span></div>
+          <div class="kv"><b>Closed trades</b><span id="p_cnt">—</span></div>
+        </div>
+      </div>
+      <div class="card"><b>Open trades</b><table id="p_open"></table></div>
+      <div class="card"><b>History</b><table id="p_hist"></table></div>
+      <p class="mut">Paper trading only. Past results do not guarantee future profit.</p>
+    </div>
+
+    <div id="t_prof" class="hide">
+      <div class="card">
+        <div class="kv" style="margin-bottom:10px"><b>Name</b><span id="u_name">—</span></div>
+        <div class="kv" style="margin-bottom:10px"><b>Email</b><span id="u_email">—</span></div>
+        <div class="kv" style="margin-bottom:10px"><b>Subscription</b><span id="u_sub">—</span></div>
+        <div class="kv" style="margin-bottom:14px"><b>Expires</b><span id="u_exp">—</span></div>
+        <button id="u_key" class="sec" style="margin-bottom:10px">Enter another key</button>
+        <button id="u_logout" class="sec">Logout</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+const API = (window.VORTEX_CONFIG||{}).API_BASE || '';
+const $ = id => document.getElementById(id);
+const show = id => ['auth','locked','main'].forEach(x => $(x).classList.toggle('hide', x!==id));
+let token = localStorage.getItem('vtx_token') || '';
+let registerMode = false, timer = null;
+
+async function api(path, method='GET', body){
+  const r = await fetch(API+path, {method, headers:{'Content-Type':'application/json', ...(token?{Authorization:'Bearer '+token}:{})}, body: body?JSON.stringify(body):undefined});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok){ const e = new Error(j.detail || 'Request failed'); e.status = r.status; throw e; }
+  return j;
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = n => (n<0?'-':'')+'$'+Math.abs(n).toFixed(2);
+const fmtDate = d => d ? d.replace('T',' ').slice(0,16)+' UTC' : '—';
+
+/* auth */
+$('a_toggle').onclick = () => {
+  registerMode = !registerMode;
+  $('a_name').classList.toggle('hide', !registerMode);
+  $('a_btn').textContent = registerMode ? 'Register' : 'Login';
+  $('a_toggle').textContent = registerMode ? 'Have an account? Login' : 'New here? Register';
+};
+$('a_btn').onclick = async () => {
+  $('a_err').textContent = '';
+  try{
+    const body = {email:$('a_email').value, password:$('a_pass').value};
+    if(registerMode) body.name = $('a_name').value;
+    const j = await api(registerMode?'/api/auth/register':'/api/auth/login','POST',body);
+    token = j.token; localStorage.setItem('vtx_token', token);
+    start();
+  }catch(e){ $('a_err').textContent = e.message; }
+};
+function logout(){ token=''; localStorage.removeItem('vtx_token'); clearInterval(timer); show('auth'); }
+$('lock_logout').onclick = logout; $('u_logout').onclick = logout;
+
+/* activation */
+$('k_btn').onclick = async () => {
+  $('k_err').textContent = '';
+  try{ await api('/api/subscription/activate','POST',{key:$('k_in').value}); $('k_in').value=''; start(); }
+  catch(e){ $('k_err').textContent = e.message; }
+};
+$('u_key').onclick = () => { clearInterval(timer); show('locked'); };
+
+/* tabs */
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x===b));
+  ['t_sig','t_paper','t_prof'].forEach(t => $(t).classList.toggle('hide', t!==b.dataset.tab));
+});
+
+/* data */
+async function loadSignal(){
+  try{
+    const j = await api('/api/signals/latest');
+    const s = j.signal;
+    if(!s){ $('s_meta').textContent = j.message; return; }
+    $('s_meta').textContent = `${s.symbol} · ${s.timeframe} · ${fmtDate(s.created_at)}`;
+    $('s_sig').textContent = s.signal; $('s_sig').className = 'sig '+s.signal;
+    $('s_reason').textContent = s.reason || '';
+    const i = s.indicators || {};
+    const items = [['Price',s.price],['Stop loss',s.sl??'—'],['Take profit',s.tp??'—'],['RSI 14',i.rsi14??'—'],['ADX',i.adx14??'—'],['ATR 14',i.atr14??'—'],['EMA 20',i.ema20??'—'],['EMA 50',i.ema50??'—']];
+    $('s_grid').innerHTML = items.map(([k,v])=>`<div class="kv"><b>${k}</b><span>${esc(v)}</span></div>`).join('');
+  }catch(e){ if(e.status===402) start(); }
+}
+async function loadPaper(){
+  try{
+    const j = await api('/api/paper/summary');
+    $('p_bal').textContent = money(j.balance);
+    $('p_pnl').textContent = money(j.stats.total_pnl); $('p_pnl').className = j.stats.total_pnl>=0?'pos':'neg';
+    $('p_wr').textContent = j.stats.win_rate==null ? '—' : j.stats.win_rate+'%';
+    $('p_cnt').textContent = j.stats.closed_count;
+    $('p_open').innerHTML = j.open_trades.length ? '<tr><th>Side</th><th>Entry</th><th>SL</th><th>TP</th></tr>' +
+      j.open_trades.map(t=>`<tr><td class="${t.side}">${t.side}</td><td>${t.entry}</td><td>${t.sl}</td><td>${t.tp}</td></tr>`).join('') : '<tr><td class="mut">No open trade</td></tr>';
+    $('p_hist').innerHTML = j.closed_trades.length ? '<tr><th>Side</th><th>Exit</th><th>P/L</th></tr>' +
+      j.closed_trades.slice(0,30).map(t=>`<tr><td class="${t.side}">${t.side}</td><td>${esc(t.exit_reason)}</td><td class="${t.pnl>=0?'pos':'neg'}">${money(t.pnl)}</td></tr>`).join('') : '<tr><td class="mut">No closed trades yet</td></tr>';
+  }catch(e){}
+}
+async function start(){
+  clearInterval(timer);
+  if(!token){ show('auth'); return; }
+  try{
+    const me = await api('/api/me');
+    $('u_name').textContent = me.name || '—'; $('u_email').textContent = me.email;
+    $('u_sub').textContent = me.subscription_active ? 'Active' : 'Not active'; $('u_exp').textContent = fmtDate(me.expires_at);
+    if(!me.subscription_active){
+      $('lock_msg').textContent = (window.VORTEX_CONFIG||{}).ADMIN_CONTACT || 'Message the admin to buy an activation key.';
+      show('locked'); return;
+    }
+    show('main'); loadSignal(); loadPaper();
+    timer = setInterval(()=>{ loadSignal(); loadPaper(); }, 20000);
+  }catch(e){
+    if(e.status===401 || e.status===403){ logout(); $('a_err').textContent = e.message; }
+    else { show('auth'); $('a_err').textContent = 'Cannot reach server. Check internet / backend URL.'; }
+  }
+}
+start();
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "appId": "com.vortex.ai",
+  "appName": "VORTEX AI",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}

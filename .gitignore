@@ -1,0 +1,13 @@
+.env
+*.db
+*.sqlite3
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+app/android/
+*.keystore
+*.jks
+local.properties
+build/
+.gradle/
