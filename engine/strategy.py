@@ -1,9 +1,9 @@
 """Signal strategy (BUY / SELL / WAIT) for XAU/USD on M5 with 15-minute confirmation.
 
 NOTE: This is a clean baseline built from the indicator set Danish described
-(EMA 20/50, RSI 14, ATR 14, ADX, 15m EMA 20/50 confirmation). The original
-VORTEX V3 logic from the old ZIP must replace/merge into `decide()` once the
-ZIP is provided. Do not treat this as a proven profitable strategy.
+(EMA 20/50, RSI 14, ATR 14, ADX, 15m EMA 20/50 confirmation). The ZIP
+(vortex_stage1) had only risk/paper/db code, no strategy, so the original VORTEX V3
+signal logic is still missing here. Do not treat this as a proven profitable strategy.
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -13,8 +13,7 @@ import pandas as pd
 from indicators import add_indicators
 
 ADX_MIN = 20.0
-SL_ATR_MULT = 1.0
-TP_ATR_MULT = 2.0
+SL_ATR_MULT = 1.0  # stop distance = 1 x ATR; TP/size are set by vortex.risk.RiskManager
 
 
 @dataclass
@@ -25,6 +24,7 @@ class Decision:
     tp: Optional[float]
     reason: str
     indicators: dict
+    sl_distance: Optional[float] = None  # price distance of the stop; RiskManager turns it into SL/TP/size
 
 
 def resample_15m(df5: pd.DataFrame) -> pd.DataFrame:
@@ -62,9 +62,9 @@ def decide(df5: pd.DataFrame) -> Decision:
     dn15 = r15["ema20"] < r15["ema50"]
 
     if up5 and up15 and 50 <= r["rsi14"] <= 70:
-        return Decision("BUY", price, round(price - SL_ATR_MULT * atr_v, 2), round(price + TP_ATR_MULT * atr_v, 2),
-                        "M5 and 15m uptrend, RSI 50-70, ADX trend OK", ind)
+        return Decision("BUY", price, None, None, "M5 and 15m uptrend, RSI 50-70, ADX trend OK", ind,
+                        sl_distance=round(SL_ATR_MULT * atr_v, 2))
     if dn5 and dn15 and 30 <= r["rsi14"] <= 50:
-        return Decision("SELL", price, round(price + SL_ATR_MULT * atr_v, 2), round(price - TP_ATR_MULT * atr_v, 2),
-                        "M5 and 15m downtrend, RSI 30-50, ADX trend OK", ind)
+        return Decision("SELL", price, None, None, "M5 and 15m downtrend, RSI 30-50, ADX trend OK", ind,
+                        sl_distance=round(SL_ATR_MULT * atr_v, 2))
     return Decision("WAIT", price, None, None, "Trend/RSI conditions not aligned", ind)

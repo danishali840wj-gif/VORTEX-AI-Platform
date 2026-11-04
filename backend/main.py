@@ -75,23 +75,9 @@ CREATE TABLE IF NOT EXISTS signals (
     indicators TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS paper_trades (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    side TEXT NOT NULL,
-    entry REAL NOT NULL,
-    sl REAL NOT NULL,
-    tp REAL NOT NULL,
-    lots REAL NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open',      -- open | closed
-    exit_price REAL,
-    exit_reason TEXT,
-    pnl REAL,
-    opened_at TEXT NOT NULL,
-    closed_at TEXT
-);
-CREATE TABLE IF NOT EXISTS paper_account (
+CREATE TABLE IF NOT EXISTS paper_snapshot (
     id INTEGER PRIMARY KEY CHECK (id = 1),
-    balance REAL NOT NULL,
+    data TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 """
@@ -118,10 +104,6 @@ def startup():
         raise RuntimeError("Set ADMIN_TOKEN, ENGINE_TOKEN and SECRET_KEY environment variables (see .env.example).")
     with db() as c:
         c.executescript(SCHEMA)
-        c.execute(
-            "INSERT OR IGNORE INTO paper_account (id, balance, updated_at) VALUES (1, 1000.0, ?)",
-            (now_iso(),),
-        )
 
 
 # ---------------------------------------------------------------- auth helpers
@@ -225,19 +207,6 @@ class SignalIn(BaseModel):
     indicators: dict = {}
 
 
-class PaperOpenIn(BaseModel):
-    side: str
-    entry: float
-    sl: float
-    tp: float
-    lots: float
-
-
-class PaperCloseIn(BaseModel):
-    exit_price: float
-    exit_reason: str
-    pnl: float
-
 
 # ---------------------------------------------------------------- user routes
 @app.get("/api/health")
@@ -327,21 +296,13 @@ def signal_history(limit: int = 50, user: sqlite3.Row = Depends(active_user)):
 @app.get("/api/paper/summary")
 def paper_summary(user: sqlite3.Row = Depends(active_user)):
     with db() as c:
-        acct = c.execute("SELECT * FROM paper_account WHERE id=1").fetchone()
-        open_t = c.execute("SELECT * FROM paper_trades WHERE status='open' ORDER BY id DESC").fetchall()
-        closed = c.execute("SELECT * FROM paper_trades WHERE status='closed' ORDER BY id DESC LIMIT 100").fetchall()
-    wins = [t for t in closed if (t["pnl"] or 0) > 0]
-    total_pnl = sum((t["pnl"] or 0) for t in closed)
-    return {
-        "balance": acct["balance"],
-        "open_trades": [dict(t) for t in open_t],
-        "closed_trades": [dict(t) for t in closed],
-        "stats": {
-            "closed_count": len(closed),
-            "win_rate": round(100 * len(wins) / len(closed), 2) if closed else None,
-            "total_pnl": round(total_pnl, 2),
-        },
-    }
+        row = c.execute("SELECT data, updated_at FROM paper_snapshot WHERE id=1").fetchone()
+    if not row:
+        return {"balance": 0, "open_trades": [], "closed_trades": [],
+                "stats": {"closed_count": 0, "win_rate": None, "total_pnl": 0}, "updated_at": None}
+    d = json.loads(row["data"])
+    d["updated_at"] = row["updated_at"]
+    return d
 
 
 # ---------------------------------------------------------------- engine routes
@@ -357,38 +318,19 @@ def push_signal(body: SignalIn):
     return {"ok": True}
 
 
-@app.post("/api/paper/open", dependencies=[Depends(engine_only)])
-def paper_open(body: PaperOpenIn):
-    if body.side not in ("BUY", "SELL"):
-        raise HTTPException(400, "side must be BUY or SELL")
+@app.post("/api/paper/sync", dependencies=[Depends(engine_only)])
+def paper_sync(body: dict):
+    """Engine owns the paper account; it pushes a full snapshot after every candle."""
+    for k in ("balance", "open_trades", "closed_trades", "stats"):
+        if k not in body:
+            raise HTTPException(400, f"missing '{k}'")
     with db() as c:
-        cur = c.execute(
-            "INSERT INTO paper_trades (side, entry, sl, tp, lots, opened_at) VALUES (?,?,?,?,?,?)",
-            (body.side, body.entry, body.sl, body.tp, body.lots, now_iso()),
-        )
-    return {"id": cur.lastrowid}
-
-
-@app.post("/api/paper/close/{trade_id}", dependencies=[Depends(engine_only)])
-def paper_close(trade_id: int, body: PaperCloseIn):
-    with db() as c:
-        t = c.execute("SELECT * FROM paper_trades WHERE id=?", (trade_id,)).fetchone()
-        if not t or t["status"] != "open":
-            raise HTTPException(404, "Open trade not found")
         c.execute(
-            "UPDATE paper_trades SET status='closed', exit_price=?, exit_reason=?, pnl=?, closed_at=? WHERE id=?",
-            (body.exit_price, body.exit_reason, body.pnl, now_iso(), trade_id),
+            "INSERT INTO paper_snapshot (id, data, updated_at) VALUES (1, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+            (json.dumps(body), now_iso()),
         )
-        c.execute("UPDATE paper_account SET balance = balance + ?, updated_at=? WHERE id=1", (body.pnl, now_iso()))
     return {"ok": True}
-
-
-@app.get("/api/paper/state", dependencies=[Depends(engine_only)])
-def paper_state():
-    with db() as c:
-        acct = c.execute("SELECT * FROM paper_account WHERE id=1").fetchone()
-        open_t = c.execute("SELECT * FROM paper_trades WHERE status='open'").fetchall()
-    return {"balance": acct["balance"], "open_trades": [dict(t) for t in open_t]}
 
 
 # ---------------------------------------------------------------- admin routes

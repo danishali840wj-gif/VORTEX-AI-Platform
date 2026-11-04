@@ -10,7 +10,7 @@ AI-based gold (XAU/USD) analysis and **paper-trading** platform with an Android 
 |---|---|
 | `backend/` | FastAPI + SQLite: register/login, subscription keys, admin API, signals, paper trades |
 | `backend/static/admin.html` | Admin panel (open `/admin`): generate keys (30d/90d/1y), users, block/unblock, deactivate, history |
-| `engine/` | AI engine: indicators (EMA20/50, RSI14, ATR14, ADX), BUY/SELL/WAIT strategy, risk rules, paper trader |
+| `engine/` | AI engine: `vortex/` (risk manager, paper account, DB - from your Stage 1 ZIP, unchanged), `indicators.py` + `strategy.py` (BUY/SELL/WAIT), `run_engine.py` (runner) |
 | `app/` | Android app (Capacitor wrapper around `app/www`) |
 | `.github/workflows/build-apk.yml` | Builds the APK in GitHub Actions |
 
@@ -47,5 +47,7 @@ python run_engine.py
 
 ## Status
 
-- Strategy in `engine/strategy.py` is a clean baseline. The original VORTEX V3 logic from the old ZIP is still to be merged in.
+- `engine/vortex/` is your Stage 1 code (risk 1.7% / reward 5% / daily loss limit 5% / max 2 open trades / 20x leverage cap / emergency stop). Its 15 original tests pass.
+- The Stage 1 ZIP had no strategy, so `engine/strategy.py` is a clean baseline (EMA/RSI/ADX/ATR + 15m confirmation). The original VORTEX V3 signal logic is still to be merged in.
+- Run engine tests: `cd engine && python -m unittest discover -s tests -t .`
 - Never commit `.env`, API keys or passwords.
