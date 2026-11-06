@@ -30,7 +30,7 @@
 <body>
 <div class="wrap">
   <h1>VORTEX AI</h1>
-  <div class="sub">Gold (XAU/USD) analysis · Paper trading</div>
+  <div class="sub">Gold (XAU/USD) analysis · AI trading</div>
 
   <!-- AUTH -->
   <div id="auth" class="card hide">
@@ -59,7 +59,7 @@
   <div id="main" class="hide">
     <div class="tabs">
       <button data-tab="t_sig" class="on">Signal</button>
-      <button data-tab="t_paper">Paper</button>
+      <button data-tab="t_paper">Trades</button>
       <button data-tab="t_ai">AI</button>
       <button data-tab="t_prof">Profile</button>
     </div>
@@ -76,7 +76,8 @@
     <div id="t_paper" class="hide">
       <div class="card">
         <div class="grid">
-          <div class="kv"><b>Balance (demo)</b><span id="p_bal">—</span></div>
+          <div class="kv"><b id="p_bal_l">Balance</b><span id="p_bal">—</span></div>
+          <div class="kv"><b>Mode</b><span id="p_mode">—</span></div>
           <div class="kv"><b>Total P/L</b><span id="p_pnl">—</span></div>
           <div class="kv"><b>Win rate</b><span id="p_wr">—</span></div>
           <div class="kv"><b>Closed trades</b><span id="p_cnt">—</span></div>
@@ -84,7 +85,7 @@
       </div>
       <div class="card"><b>Open trades</b><table id="p_open"></table></div>
       <div class="card"><b>History</b><table id="p_hist"></table></div>
-      <p class="mut">Paper trading only. Past results do not guarantee future profit.</p>
+      <p class="mut" id="p_note">Past results do not guarantee future profit. Trading involves risk.</p>
     </div>
 
     <div id="t_ai" class="hide">
@@ -189,7 +190,11 @@ async function loadSignal(){
 async function loadPaper(){
   try{
     const j = await api('/api/paper/summary');
-    $('p_bal').textContent = money(j.balance);
+    const live = j.mode && j.mode !== 'VIRTUAL';
+    $('p_bal').textContent = money(live && j.broker_balance!=null ? j.broker_balance : j.balance);
+    $('p_bal_l').textContent = live ? 'MT5 balance' : 'Balance (virtual)';
+    $('p_mode').textContent = j.mode==='LIVE' ? 'LIVE (real money)' : j.mode==='DEMO' ? 'MT5 DEMO' : 'Virtual';
+    $('p_mode').className = j.mode==='LIVE' ? 'neg' : '';
     $('p_pnl').textContent = money(j.stats.total_pnl); $('p_pnl').className = j.stats.total_pnl>=0?'pos':'neg';
     $('p_wr').textContent = j.stats.win_rate==null ? '—' : j.stats.win_rate+'%';
     $('p_cnt').textContent = j.stats.closed_count;

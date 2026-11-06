@@ -47,3 +47,9 @@ The app talks to `http://127.0.0.1:8000` by default (backend on the same phone).
 - The Stage 1 ZIP had no strategy, so `engine/strategy.py` is a clean baseline (EMA/RSI/ADX/ATR + 15m confirmation). The original VORTEX V3 signal logic is still to be merged in.
 - Tests: `cd engine && python -m unittest discover -s tests -t .` and `cd backend && python -m unittest discover -s tests -t .`
 - Never commit `.env`, API keys or passwords.
+
+## Real MT5 trading (MetaApi)
+Default is OFF (virtual trades). To trade a real MT5 account: create a MetaApi account, add your MT5 account there,
+put `METAAPI_TOKEN`, `METAAPI_ACCOUNT_ID` and `MT5_MODE=demo` in `.env`, restart with `bash run.sh`.
+Use a demo account first. `MT5_MODE=live` additionally needs `MT5_LIVE_CONFIRM=I_ACCEPT_REAL_MONEY_RISK`.
+Every order passes the same risk rules (1.7% risk, max 2 open, 5% daily loss limit, emergency stop) and is sent with SL and TP.

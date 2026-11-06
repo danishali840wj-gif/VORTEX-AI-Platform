@@ -6,7 +6,7 @@ Every NEW closed 5-minute candle of gold:
   3. if BUY/SELL, ask the risk manager to open a paper trade (all limits enforced in vortex/risk.py)
   4. push the signal + a snapshot of the paper account to the backend (the Android app reads these)
 
-Paper trading ONLY: virtual money, no broker connection.
+Default: virtual paper trades. If MT5_MODE=demo|live (see vortex/mt5.py), each approved trade is ALSO sent to MT5.
 
 Usage:  python run_engine.py            (checks every 60 seconds)
         python run_engine.py --once     (single check)
@@ -19,6 +19,7 @@ from datetime import datetime
 
 from strategy import decide
 from vortex.db import connect
+from vortex.mt5 import MetaApiBroker
 from vortex.paper import PaperAccount
 from vortex.risk import RiskConfig
 
@@ -87,7 +88,7 @@ def set_state(conn, key, value):
     conn.commit()
 
 
-def snapshot(conn, acc) -> dict:
+def snapshot(conn, acc, broker=None, broker_info=None) -> dict:
     acct = acc._account()
     open_t = conn.execute("SELECT * FROM trades WHERE account_id=? AND status='open' ORDER BY id DESC", (acc.id,)).fetchall()
     closed = conn.execute(
@@ -95,6 +96,8 @@ def snapshot(conn, acc) -> dict:
     ).fetchall()
     st = acc.stats()
     return {
+        "mode": broker.mode.upper() if broker else "VIRTUAL",
+        "broker_balance": round(float(broker_info["balance"]), 2) if broker_info else None,
         "balance": round(acc.balance, 2),
         "trading_enabled": bool(acct["trading_enabled"]),
         "emergency_stopped": bool(acct["emergency_stopped"]),
@@ -116,7 +119,7 @@ def snapshot(conn, acc) -> dict:
     }
 
 
-def process_candle(conn, acc, closed_df: list, push=api) -> dict:
+def process_candle(conn, acc, closed_df: list, push=api, broker=None) -> dict:
     """Handle ONE new closed candle. Returns a small dict describing what happened (used by tests)."""
     last = closed_df[-1]
     ts = int(last["t"]) + CANDLE_SECONDS
@@ -126,18 +129,37 @@ def process_candle(conn, acc, closed_df: list, push=api) -> dict:
 
     sl = tp = None
     opened = None
+    broker_info = None
     reason = ""
     if d.signal in ("BUY", "SELL") and d.sl_distance:
         sl, tp = acc.risk.levels(d.signal, d.price, d.sl_distance)
         opened, reason = acc.open_trade(d.signal, d.price, d.sl_distance, ts)
+        if opened and broker:  # the trade passed every risk rule -> mirror it as a REAL order on MT5
+            try:
+                info = broker.account_info()
+                broker_info = info
+                lots = broker.lots_for(acc.risk, info, d.price, d.sl_distance)
+                if lots < 0.01:
+                    reason = "MT5: balance too small for 0.01 lot - order NOT sent"
+                else:
+                    broker.place(d.signal, lots, sl, tp)
+                    reason = f"MT5 {broker.mode}: {d.signal} {lots} lot sent"
+            except Exception as e:
+                reason = f"MT5 order FAILED: {e}"
+                print("  ", reason)
 
     try:
         push("/api/signals/push", {
             "symbol": "XAUUSD", "timeframe": "M5", "signal": d.signal, "price": round(d.price, 2),
             "sl": round(sl, 2) if sl else None, "tp": round(tp, 2) if tp else None,
-            "reason": d.reason + (f" | trade: {reason}" if reason and not opened else ""), "indicators": d.indicators,
+            "reason": d.reason + (f" | {reason}" if reason and (not opened or broker) else ""), "indicators": d.indicators,
         })
-        push("/api/paper/sync", snapshot(conn, acc))
+        if broker and broker_info is None:
+            try:
+                broker_info = broker.account_info()
+            except Exception:
+                pass
+        push("/api/paper/sync", snapshot(conn, acc, broker, broker_info))
     except Exception as e:  # keep engine alive if backend is down; next candle pushes again
         print("  push failed:", e)
 
@@ -150,14 +172,18 @@ def cycle(conn, acc):
     candle_ts = int(closed_df[-1]["t"])
     if str(candle_ts) == get_state(conn, "last_candle_ts"):
         return  # already processed this candle
-    res = process_candle(conn, acc, closed_df)
+    res = process_candle(conn, acc, closed_df, broker=BROKER)
     set_state(conn, "last_candle_ts", candle_ts)
     print(f"{datetime.now():%H:%M:%S} signal={res['signal']} closed={res['closed']} opened={res['opened']} {res['reason']}")
+
+
+BROKER = MetaApiBroker.from_env()
 
 
 def main():
     if not ENGINE_TOKEN:
         sys.exit("Set ENGINE_TOKEN (same value as backend).")
+    print("MT5 mode:", BROKER.mode.upper() if BROKER else "OFF (virtual paper trades only)")
     conn, acc = open_account()
     once = "--once" in sys.argv
     while True:
