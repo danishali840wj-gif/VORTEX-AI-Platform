@@ -194,7 +194,7 @@ async function loadPaper(){
     $('p_wr').textContent = j.stats.win_rate==null ? '—' : j.stats.win_rate+'%';
     $('p_cnt').textContent = j.stats.closed_count;
     $('p_open').innerHTML = j.open_trades.length ? '<tr><th>Side</th><th>Entry</th><th>SL</th><th>TP</th></tr>' +
-      j.open_trades.map(t=>`<tr><td class="${t.side}">${t.side}</td><td>${t.entry}</td><td>${t.sl}</td><td>${t.tp}</td></tr>`).join('') : '<tr><td class="mut">No open trade</td></tr>';
+      j.open_trades.map(t=>`<tr><td class="${t.side}">${t.side}</td><td>${Number(t.entry).toFixed(2)}</td><td>${t.sl}</td><td>${t.tp}</td></tr>`).join('') : '<tr><td class="mut">No open trade</td></tr>';
     $('p_hist').innerHTML = j.closed_trades.length ? '<tr><th>Side</th><th>Exit</th><th>P/L</th></tr>' +
       j.closed_trades.slice(0,30).map(t=>`<tr><td class="${t.side}">${t.side}</td><td>${esc(t.exit_reason)}</td><td class="${t.pnl>=0?'pos':'neg'}">${money(t.pnl)}</td></tr>`).join('') : '<tr><td class="mut">No closed trades yet</td></tr>';
   }catch(e){}
