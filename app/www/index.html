@@ -34,8 +34,9 @@
 
   <!-- AUTH -->
   <div id="auth" class="card hide">
-    <input id="a_name" class="hide" placeholder="Name">
-    <input id="a_email" type="email" placeholder="Email" autocomplete="username">
+    <input id="a_name" class="hide" placeholder="Name (optional)">
+    <input id="a_user" placeholder="Username" autocomplete="username" autocapitalize="none">
+    <input id="a_phone" class="hide" type="tel" inputmode="tel" placeholder="Phone number (e.g. 9876543210)" autocomplete="tel">
     <input id="a_pass" type="password" placeholder="Password (min 6)" autocomplete="current-password">
     <div id="a_err" class="err"></div>
     <button id="a_btn">Login</button>
@@ -59,6 +60,7 @@
     <div class="tabs">
       <button data-tab="t_sig" class="on">Signal</button>
       <button data-tab="t_paper">Paper</button>
+      <button data-tab="t_ai">AI</button>
       <button data-tab="t_prof">Profile</button>
     </div>
 
@@ -85,10 +87,23 @@
       <p class="mut">Paper trading only. Past results do not guarantee future profit.</p>
     </div>
 
+    <div id="t_ai" class="hide">
+      <div class="card"><b>AI Analysis</b>
+        <p id="ai_text" class="mut" style="white-space:pre-wrap">Loading…</p>
+        <button id="ai_refresh" class="sec">Refresh analysis</button>
+      </div>
+      <div class="card"><b>AI se poocho</b>
+        <div id="ai_log" style="margin:10px 0"></div>
+        <input id="ai_in" placeholder="Jaise: risk kya hai? paper profit?">
+        <button id="ai_send">Send</button>
+      </div>
+    </div>
+
     <div id="t_prof" class="hide">
       <div class="card">
         <div class="kv" style="margin-bottom:10px"><b>Name</b><span id="u_name">—</span></div>
-        <div class="kv" style="margin-bottom:10px"><b>Email</b><span id="u_email">—</span></div>
+        <div class="kv" style="margin-bottom:10px"><b>Username</b><span id="u_user">—</span></div>
+        <div class="kv" style="margin-bottom:10px"><b>Phone</b><span id="u_phone">—</span></div>
         <div class="kv" style="margin-bottom:10px"><b>Subscription</b><span id="u_sub">—</span></div>
         <div class="kv" style="margin-bottom:14px"><b>Expires</b><span id="u_exp">—</span></div>
         <button id="u_key" class="sec" style="margin-bottom:10px">Enter another key</button>
@@ -126,14 +141,15 @@ $('a_server').onclick = () => {
 $('a_toggle').onclick = () => {
   registerMode = !registerMode;
   $('a_name').classList.toggle('hide', !registerMode);
+  $('a_phone').classList.toggle('hide', !registerMode);
   $('a_btn').textContent = registerMode ? 'Register' : 'Login';
   $('a_toggle').textContent = registerMode ? 'Have an account? Login' : 'New here? Register';
 };
 $('a_btn').onclick = async () => {
   $('a_err').textContent = '';
   try{
-    const body = {email:$('a_email').value, password:$('a_pass').value};
-    if(registerMode) body.name = $('a_name').value;
+    const body = {username:$('a_user').value.trim(), password:$('a_pass').value};
+    if(registerMode){ body.name = $('a_name').value; body.phone = $('a_phone').value; }
     const j = await api(registerMode?'/api/auth/register':'/api/auth/login','POST',body);
     token = j.token; localStorage.setItem('vtx_token', token);
     start();
@@ -153,7 +169,7 @@ $('u_key').onclick = () => { clearInterval(timer); show('locked'); };
 /* tabs */
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x===b));
-  ['t_sig','t_paper','t_prof'].forEach(t => $(t).classList.toggle('hide', t!==b.dataset.tab));
+  ['t_sig','t_paper','t_ai','t_prof'].forEach(t => $(t).classList.toggle('hide', t!==b.dataset.tab));
 });
 
 /* data */
@@ -183,18 +199,29 @@ async function loadPaper(){
       j.closed_trades.slice(0,30).map(t=>`<tr><td class="${t.side}">${t.side}</td><td>${esc(t.exit_reason)}</td><td class="${t.pnl>=0?'pos':'neg'}">${money(t.pnl)}</td></tr>`).join('') : '<tr><td class="mut">No closed trades yet</td></tr>';
   }catch(e){}
 }
+/* AI */
+async function loadAI(){
+  try{ $('ai_text').textContent = (await api('/api/ai/analysis')).text; }catch(e){ $('ai_text').textContent = e.message; }
+}
+$('ai_refresh').onclick = loadAI;
+function aiLine(who, t){ const d=document.createElement('div'); d.style.cssText='margin:6px 0;white-space:pre-wrap'; d.className = who==='me'?'':'mut'; d.textContent=(who==='me'?'Aap: ':'AI: ')+t; $('ai_log').appendChild(d); }
+$('ai_send').onclick = async () => {
+  const m = $('ai_in').value.trim(); if(!m) return;
+  $('ai_in').value=''; aiLine('me', m);
+  try{ aiLine('ai', (await api('/api/ai/chat','POST',{message:m})).text); }catch(e){ aiLine('ai', e.message); }
+};
 async function start(){
   clearInterval(timer);
   if(!token){ show('auth'); return; }
   try{
     const me = await api('/api/me');
-    $('u_name').textContent = me.name || '—'; $('u_email').textContent = me.email;
+    $('u_name').textContent = me.name || '—'; $('u_user').textContent = me.username; $('u_phone').textContent = me.phone || '—';
     $('u_sub').textContent = me.subscription_active ? 'Active' : 'Not active'; $('u_exp').textContent = fmtDate(me.expires_at);
     if(!me.subscription_active){
       $('lock_msg').textContent = (window.VORTEX_CONFIG||{}).ADMIN_CONTACT || 'Message the admin to buy an activation key.';
       show('locked'); return;
     }
-    show('main'); loadSignal(); loadPaper();
+    show('main'); loadSignal(); loadPaper(); loadAI();
     timer = setInterval(()=>{ loadSignal(); loadPaper(); }, 20000);
   }catch(e){
     if(e.status===401 || e.status===403){ logout(); $('a_err').textContent = e.message; }

@@ -22,8 +22,9 @@
 <h1>VORTEX AI — Admin Panel</h1>
 
 <div class="card row">
-  <input id="tok" type="password" placeholder="Admin token" style="flex:1;min-width:200px">
-  <button onclick="saveTok()">Connect</button>
+  <input id="au" placeholder="Admin username" autocapitalize="none" style="flex:1;min-width:140px">
+  <input id="ap" type="password" placeholder="Password" style="flex:1;min-width:140px">
+  <button onclick="adminLogin()">Login</button>
 </div>
 <div id="msg" class="mut"></div>
 
@@ -55,7 +56,6 @@
 <script>
 const $ = id => document.getElementById(id);
 let TOKEN = sessionStorage.getItem('vtx_admin') || '';
-$('tok').value = TOKEN;
 
 async function api(path, method='GET', body){
   const r = await fetch(path, {method, headers:{'Content-Type':'application/json','X-Admin-Token':TOKEN}, body: body?JSON.stringify(body):undefined});
@@ -67,7 +67,14 @@ function msg(t, bad){ $('msg').textContent = t; $('msg').className = bad?'bad-t'
 function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function fmt(d){ return d ? d.replace('T',' ').slice(0,16) : '-'; }
 
-function saveTok(){ TOKEN = $('tok').value.trim(); sessionStorage.setItem('vtx_admin', TOKEN); loadAll(); }
+async function adminLogin(){
+  try{
+    const r = await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('au').value,password:$('ap').value})});
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.detail || 'Login failed');
+    TOKEN = j.admin_token; sessionStorage.setItem('vtx_admin', TOKEN); $('ap').value=''; loadAll();
+  }catch(e){ msg(e.message,true); }
+}
 
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x===b));
@@ -84,20 +91,20 @@ async function genKeys(){
 async function loadKeys(){
   const j = await api('/api/admin/keys');
   $('keyTbl').innerHTML = '<tr><th>Key</th><th>Duration</th><th>Status</th><th>Used by</th><th>Note</th><th></th></tr>' +
-    j.keys.map(k=>`<tr><td><code>${esc(k.key)}</code></td><td>${esc(k.duration)}</td><td>${esc(k.status)}</td><td>${esc(k.used_by_email||'-')}</td><td>${esc(k.note)}</td>
+    j.keys.map(k=>`<tr><td><code>${esc(k.key)}</code></td><td>${esc(k.duration)}</td><td>${esc(k.status)}</td><td>${esc(k.used_by_username||'-')}</td><td>${esc(k.note)}</td>
     <td>${k.status==='unused'?`<button class="bad" onclick="revoke(${k.id})">Revoke</button>`:''}</td></tr>`).join('');
 }
 async function revoke(id){ try{ await api(`/api/admin/keys/${id}/revoke`,'POST'); loadKeys(); }catch(e){ msg(e.message,true);} }
 
 async function loadUsers(){
   const j = await api('/api/admin/users');
-  $('userTbl').innerHTML = '<tr><th>ID</th><th>Email</th><th>Name</th><th>Subscription</th><th>Expires</th><th>Status</th><th></th></tr>' +
-    j.users.map(u=>`<tr><td>${u.id}</td><td>${esc(u.email)}</td><td>${esc(u.name)}</td>
+  $('userTbl').innerHTML = '<tr><th>ID</th><th>Username</th><th>Phone</th><th>Name</th><th>Subscription</th><th>Expires</th><th>Status</th><th></th></tr>' +
+    j.users.map(u=>`<tr><td>${u.id}</td><td>${esc(u.username)}${u.is_admin?' (admin)':''}</td><td>${esc(u.phone)}</td><td>${esc(u.name)}</td>
     <td class="${u.subscription_active?'ok':'mut'}">${u.subscription_active?'Active':'None'}</td><td>${fmt(u.sub_expires_at)}</td>
     <td class="${u.blocked?'bad-t':''}">${u.blocked?'Blocked':'OK'}</td>
     <td class="row">
-      ${u.blocked?`<button class="sec" onclick="act(${u.id},'unblock')">Unblock</button>`:`<button class="bad" onclick="act(${u.id},'block')">Block</button>`}
-      ${u.subscription_active?`<button class="sec" onclick="act(${u.id},'deactivate')">Deactivate</button>`:''}
+      ${u.is_admin?'':(u.blocked?`<button class="sec" onclick="act(${u.id},'unblock')">Unblock</button>`:`<button class="bad" onclick="act(${u.id},'block')">Block</button>`)}
+      ${u.subscription_active&&!u.is_admin?`<button class="sec" onclick="act(${u.id},'deactivate')">Deactivate</button>`:''}
     </td></tr>`).join('');
 }
 async function act(id, what){ try{ await api(`/api/admin/users/${id}/${what}`,'POST'); loadUsers(); loadHist(); }catch(e){ msg(e.message,true);} }
@@ -105,7 +112,7 @@ async function act(id, what){ try{ await api(`/api/admin/users/${id}/${what}`,'P
 async function loadHist(){
   const j = await api('/api/admin/history');
   $('histTbl').innerHTML = '<tr><th>Time (UTC)</th><th>User</th><th>Event</th><th>Detail</th></tr>' +
-    j.history.map(h=>`<tr><td>${fmt(h.created_at)}</td><td>${esc(h.email||h.user_id)}</td><td>${esc(h.event)}</td><td class="mut">${esc(h.detail)}</td></tr>`).join('');
+    j.history.map(h=>`<tr><td>${fmt(h.created_at)}</td><td>${esc(h.username||h.user_id)}</td><td>${esc(h.event)}</td><td class="mut">${esc(h.detail)}</td></tr>`).join('');
 }
 async function loadAll(){
   try{ await Promise.all([loadKeys(), loadUsers(), loadHist()]); msg('Connected'); }

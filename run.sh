@@ -30,6 +30,8 @@ PY
 else
   echo "   .env already exists - kept as is"
 fi
+# admin login for the app/admin panel (stored only in .env, which is never pushed to GitHub)
+grep -q '^ADMIN_USER=.\+' .env || echo "   NOTE: ADMIN_USER / ADMIN_PASS not set in .env - admin login will not exist"
 set -a; . ./.env; set +a
 
 echo "== 3/4 Stopping old processes (if any)"
@@ -60,8 +62,7 @@ echo
 echo "=============================================="
 echo " VORTEX is running"
 echo " Admin panel : http://127.0.0.1:${PORT:-8000}/admin"
-echo " Admin token : $ADMIN_TOKEN"
-echo " (keep the admin token secret - only you should have it)"
+echo " Admin login : username $ADMIN_USER (password is in .env)"
 echo " Logs        : logs/backend.log , logs/engine.log"
 echo " Stop        : bash stop.sh"
 echo "=============================================="
