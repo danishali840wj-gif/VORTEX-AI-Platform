@@ -29,11 +29,11 @@ cd VORTEX-AI-Platform
 bash run.sh
 ```
 
-`run.sh` installs pandas/numpy if missing, creates `.env` with random secrets (first time only), starts the backend and the engine, and prints your **admin token**.
+`run.sh` creates `.env` with random secrets (first time only), starts the backend and the engine, and prints your **admin token**.
 Stop everything: `bash stop.sh`.
 
 - Admin panel: `http://127.0.0.1:8000/admin` (paste the admin token).
-- Backend is pure Python standard library (no pip needed). Engine needs only pandas + numpy.
+- Backend is pure Python standard library (no pip needed). Engine is pure Python too (no pandas/numpy).
 - Logs: `logs/backend.log`, `logs/engine.log`.
 
 ## Build the APK

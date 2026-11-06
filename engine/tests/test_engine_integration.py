@@ -4,8 +4,7 @@ This checks the wiring and the money math only. It says nothing about real-marke
 """
 import unittest
 
-import numpy as np
-import pandas as pd
+import random
 
 import run_engine
 from vortex.db import connect
@@ -14,14 +13,15 @@ from vortex.risk import RiskConfig
 
 
 def synthetic(n=900, seed=7, drift=0.05, vol=1.2):
-    rng = np.random.default_rng(seed)
-    idx = pd.date_range("2026-01-05 00:00", periods=n, freq="5min")
-    close = 2000 + np.cumsum(rng.normal(drift, vol, n))
-    df = pd.DataFrame({"Close": close}, index=idx)
-    df["Open"] = df["Close"].shift(1).fillna(df["Close"])
-    df["High"] = df[["Open", "Close"]].max(axis=1) + rng.uniform(0.1, 0.8, n)
-    df["Low"] = df[["Open", "Close"]].min(axis=1) - rng.uniform(0.1, 0.8, n)
-    return df[["Open", "High", "Low", "Close"]]
+    rng = random.Random(seed)
+    t0, price, prev, out = 1767571200, 2000.0, None, []
+    for i in range(n):
+        price += rng.gauss(drift, vol)
+        o = prev if prev is not None else price
+        out.append({"t": t0 + i * 300, "Open": o, "Close": price,
+                    "High": max(o, price) + rng.uniform(0.1, 0.8), "Low": min(o, price) - rng.uniform(0.1, 0.8)})
+        prev = price
+    return out
 
 
 class EngineWiringTests(unittest.TestCase):
@@ -35,7 +35,7 @@ class EngineWiringTests(unittest.TestCase):
             pushes.append((path, payload))
 
         for i in range(130, len(df)):
-            res = run_engine.process_candle(conn, acc, df.iloc[:i], push=fake_push)
+            res = run_engine.process_candle(conn, acc, df[:i], push=fake_push)
             signals.append(res["signal"])
         return conn, acc, pushes, signals
 
@@ -93,8 +93,8 @@ class EngineWiringTests(unittest.TestCase):
                 "low": [1999.0, None, 2000.0], "close": [2000.5, None, 2001.5]}]}}]}}
         df = run_engine.parse_yahoo_chart(payload)
         self.assertEqual(len(df), 2)
-        self.assertEqual(list(df.columns), ["Open", "High", "Low", "Close"])
-        self.assertEqual(str(df.index.tz), "UTC")
+        self.assertEqual(sorted(df[0]), ["Close", "High", "Low", "Open", "t"])
+        self.assertEqual(df[1]["t"], 1767571800)
         empty = {"chart": {"result": [{"timestamp": [1], "indicators": {"quote": [{"open": [None], "high": [None], "low": [None], "close": [None]}]}}]}}
         with self.assertRaises(RuntimeError):
             run_engine.parse_yahoo_chart(empty)
@@ -108,7 +108,7 @@ class EngineWiringTests(unittest.TestCase):
         def broken(path, payload):
             raise RuntimeError("backend down")
 
-        res = run_engine.process_candle(conn, acc, df.iloc[:200], push=broken)
+        res = run_engine.process_candle(conn, acc, df[:200], push=broken)
         self.assertIn(res["signal"], ("BUY", "SELL", "WAIT"))
 
     def test_trading_off_blocks_trades(self):
@@ -116,7 +116,7 @@ class EngineWiringTests(unittest.TestCase):
         conn = connect(":memory:")
         acc = PaperAccount.create(conn, 1000.0)  # trading OFF by default
         for i in range(130, len(df)):
-            run_engine.process_candle(conn, acc, df.iloc[:i], push=lambda *a: None)
+            run_engine.process_candle(conn, acc, df[:i], push=lambda *a: None)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM trades").fetchone()[0], 0)
 
 

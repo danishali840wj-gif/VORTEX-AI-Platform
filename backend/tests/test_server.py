@@ -188,26 +188,25 @@ class BackendTests(unittest.TestCase):
         # drive the REAL engine against this REAL server
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "engine"))
-        import numpy as np
-        import pandas as pd
+        import random
         import run_engine
         from vortex.db import connect
         from vortex.paper import PaperAccount
 
         run_engine.BACKEND_URL, run_engine.ENGINE_TOKEN = self.base, ENGINE
-        rng = np.random.default_rng(3)
-        n = 400
-        idx = pd.date_range("2026-01-05 00:00", periods=n, freq="5min")
-        close = 2000 + np.cumsum(rng.normal(0.05, 1.2, n))
-        df = pd.DataFrame({"Close": close}, index=idx)
-        df["Open"] = df["Close"].shift(1).fillna(df["Close"])
-        df["High"] = df[["Open", "Close"]].max(axis=1) + rng.uniform(0.1, 0.8, n)
-        df["Low"] = df[["Open", "Close"]].min(axis=1) - rng.uniform(0.1, 0.8, n)
+        rng = random.Random(3)
+        n, price, prev, df = 400, 2000.0, None, []
+        for i in range(n):
+            price += rng.gauss(0.05, 1.2)
+            o = prev if prev is not None else price
+            df.append({"t": 1767571200 + i * 300, "Open": o, "Close": price,
+                       "High": max(o, price) + rng.uniform(0.1, 0.8), "Low": min(o, price) - rng.uniform(0.1, 0.8)})
+            prev = price
         conn = connect(":memory:")
         acc = PaperAccount.create(conn, 1000.0)
         acc.set_trading(True)
         for i in range(130, n):
-            run_engine.process_candle(conn, acc, df.iloc[:i])   # real HTTP pushes, no fake
+            run_engine.process_candle(conn, acc, df[:i])   # real HTTP pushes, no fake
 
         s, j, _ = call(self.base, "GET", "/api/signals/latest", headers=u)
         self.assertEqual(s, 200)

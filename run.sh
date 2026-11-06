@@ -8,20 +8,8 @@ ROOT="$(pwd)"
 mkdir -p logs data
 
 echo "== 1/4 Checking Python packages"
-HAVE_PD=0
-python -c "import numpy, pandas" 2>/dev/null && HAVE_PD=1
-if [ "$HAVE_PD" = 0 ] && command -v pkg >/dev/null 2>&1; then   # Termux: prebuilt packages (no slow compile)
-  pkg install -y python >/dev/null 2>&1 || true
-  pkg install -y python-numpy 2>/dev/null || true
-  pkg install -y tur-repo 2>/dev/null && pkg install -y python-pandas 2>/dev/null || true
-  python -c "import numpy, pandas" 2>/dev/null && HAVE_PD=1
-fi
-if [ "$HAVE_PD" = 0 ] && ! command -v pkg >/dev/null 2>&1; then
-  python -m pip install pandas numpy && HAVE_PD=1 || true
-fi
-if [ "$HAVE_PD" = 0 ]; then
-  echo "   WARNING: pandas/numpy not available - backend (login/register/keys) will run, AI signal engine will be skipped"
-fi
+HAVE_PD=1   # engine is pure Python now - no pandas/numpy needed
+command -v pkg >/dev/null 2>&1 && { pkg install -y python >/dev/null 2>&1 || true; }
 
 echo "== 2/4 Secrets (.env)"
 if [ ! -f .env ] || ! grep -q '^ADMIN_TOKEN=' .env; then
@@ -72,7 +60,7 @@ if [ "$HAVE_PD" = 1 ]; then
   echo $! > ../data/engine.pid
   cd ..
 else
-  echo "   (engine skipped: no pandas)"
+  echo "   (engine skipped)"
 fi
 
 echo

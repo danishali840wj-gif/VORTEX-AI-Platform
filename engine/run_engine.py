@@ -17,8 +17,6 @@ import sys
 import time
 from datetime import datetime
 
-import pandas as pd
-
 from strategy import decide
 from vortex.db import connect
 from vortex.paper import PaperAccount
@@ -32,20 +30,21 @@ ENGINE_DB = os.environ.get("VORTEX_ENGINE_DB", "engine.db")
 CANDLE_SECONDS = 300
 
 
-def parse_yahoo_chart(payload: dict) -> pd.DataFrame:
-    """Turn Yahoo's chart JSON into an OHLC DataFrame (UTC index), dropping empty candles."""
+def parse_yahoo_chart(payload: dict) -> list:
+    """Turn Yahoo's chart JSON into a list of OHLC candle dicts (t = unix seconds, UTC), dropping empty candles."""
     result = payload["chart"]["result"][0]
     q = result["indicators"]["quote"][0]
-    df = pd.DataFrame(
-        {"Open": q["open"], "High": q["high"], "Low": q["low"], "Close": q["close"]},
-        index=pd.to_datetime(result["timestamp"], unit="s", utc=True),
-    ).dropna()
-    if df.empty:
+    out = []
+    for t, o, h, l, c in zip(result["timestamp"], q["open"], q["high"], q["low"], q["close"]):
+        if None in (o, h, l, c):
+            continue
+        out.append({"t": int(t), "Open": float(o), "High": float(h), "Low": float(l), "Close": float(c)})
+    if not out:
         raise RuntimeError("No market data returned (market closed?)")
-    return df
+    return out
 
 
-def fetch_candles() -> pd.DataFrame:
+def fetch_candles() -> list:
     import json
     import urllib.request
 
@@ -117,10 +116,10 @@ def snapshot(conn, acc) -> dict:
     }
 
 
-def process_candle(conn, acc, closed_df: pd.DataFrame, push=api) -> dict:
+def process_candle(conn, acc, closed_df: list, push=api) -> dict:
     """Handle ONE new closed candle. Returns a small dict describing what happened (used by tests)."""
-    last = closed_df.iloc[-1]
-    ts = int(pd.Timestamp(closed_df.index[-1]).timestamp()) + CANDLE_SECONDS
+    last = closed_df[-1]
+    ts = int(last["t"]) + CANDLE_SECONDS
 
     closed_ids = acc.on_candle(float(last["High"]), float(last["Low"]), float(last["Close"]), ts)
     d = decide(closed_df)
@@ -147,8 +146,8 @@ def process_candle(conn, acc, closed_df: pd.DataFrame, push=api) -> dict:
 
 def cycle(conn, acc):
     df = fetch_candles()
-    closed_df = df.iloc[:-1]  # drop the still-forming candle
-    candle_ts = int(pd.Timestamp(closed_df.index[-1]).timestamp())
+    closed_df = df[:-1]  # drop the still-forming candle
+    candle_ts = int(closed_df[-1]["t"])
     if str(candle_ts) == get_state(conn, "last_candle_ts"):
         return  # already processed this candle
     res = process_candle(conn, acc, closed_df)

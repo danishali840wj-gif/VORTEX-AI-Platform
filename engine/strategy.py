@@ -8,8 +8,6 @@ signal logic is still missing here. Do not treat this as a proven profitable str
 from dataclasses import dataclass
 from typing import Optional
 
-import pandas as pd
-
 from indicators import add_indicators
 
 ADX_MIN = 20.0
@@ -27,20 +25,31 @@ class Decision:
     sl_distance: Optional[float] = None  # price distance of the stop; RiskManager turns it into SL/TP/size
 
 
-def resample_15m(df5: pd.DataFrame) -> pd.DataFrame:
-    agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last"}
-    return df5.resample("15min").agg(agg).dropna()
+def resample_15m(candles: list) -> list:
+    """Group M5 candles into 15-minute candles (UTC, aligned to :00/:15/:30/:45)."""
+    out, cur_bin = [], None
+    for c in candles:
+        b = int(c["t"]) // 900 * 900
+        if b != cur_bin:
+            out.append({"t": b, "Open": c["Open"], "High": c["High"], "Low": c["Low"], "Close": c["Close"]})
+            cur_bin = b
+        else:
+            o = out[-1]
+            o["High"] = max(o["High"], c["High"])
+            o["Low"] = min(o["Low"], c["Low"])
+            o["Close"] = c["Close"]
+    return out
 
 
-def decide(df5: pd.DataFrame) -> Decision:
+def decide(df5: list) -> Decision:
     """Decide on the LAST fully closed M5 candle of df5 (needs ~100+ rows)."""
     d5 = add_indicators(df5)
     d15 = add_indicators(resample_15m(df5))
     if len(d5) < 60 or len(d15) < 60:
-        return Decision("WAIT", float(df5["Close"].iloc[-1]), None, None, "Not enough data", {})
+        return Decision("WAIT", float(df5[-1]["Close"]), None, None, "Not enough data", {})
 
-    r = d5.iloc[-1]
-    r15 = d15.iloc[-2] if len(d15) > 1 else d15.iloc[-1]  # last closed 15m candle
+    r = d5[-1]
+    r15 = d15[-2] if len(d15) > 1 else d15[-1]  # last closed 15m candle
     price = float(r["Close"])
     ind = {
         "ema20": round(float(r["ema20"]), 2),
