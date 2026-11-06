@@ -41,7 +41,7 @@ bash "$ROOT/stop.sh" quiet || true
 command -v termux-wake-lock >/dev/null 2>&1 && termux-wake-lock || true
 
 echo "== 4/4 Starting backend + engine"
-nohup python backend/server.py > logs/backend.log 2>&1 < /dev/null &
+nohup python -u backend/server.py > logs/backend.log 2>&1 < /dev/null &
 echo $! > data/backend.pid
 sleep 2
 if ! python - <<'PY'
@@ -56,7 +56,7 @@ then
 fi
 if [ "$HAVE_PD" = 1 ]; then
   cd engine
-  nohup python run_engine.py > ../logs/engine.log 2>&1 < /dev/null &
+  nohup python -u run_engine.py > ../logs/engine.log 2>&1 < /dev/null &
   echo $! > ../data/engine.pid
   cd ..
 else
