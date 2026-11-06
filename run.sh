@@ -24,10 +24,10 @@ if [ "$HAVE_PD" = 0 ]; then
 fi
 
 echo "== 2/4 Secrets (.env)"
-if [ ! -f .env ]; then
+if [ ! -f .env ] || ! grep -q '^ADMIN_TOKEN=' .env; then
   python - <<'PY'
 import secrets
-open(".env", "w").write(
+open(".env", "a").write(
     "ADMIN_TOKEN=%s\nENGINE_TOKEN=%s\nSECRET_KEY=%s\nDB_PATH=%s/data/vortex.db\nVORTEX_ENGINE_DB=%s/data/engine.db\n"
     "BACKEND_URL=http://127.0.0.1:8000\nPORT=8000\nVORTEX_START_BALANCE=1000\n"
     % (secrets.token_urlsafe(24), secrets.token_urlsafe(24), secrets.token_urlsafe(32),
@@ -38,8 +38,13 @@ PY
 else
   echo "   .env already exists - kept as is"
 fi
-# admin login for the app/admin panel (stored only in .env, which is never pushed to GitHub)
-grep -q '^ADMIN_USER=.\+' .env || echo "   NOTE: ADMIN_USER / ADMIN_PASS not set in .env - admin login will not exist"
+# admin login: pass it when starting, e.g.  ADMIN_USER=xx ADMIN_PASS=yy bash run.sh  (saved only in local .env)
+if [ -n "$ADMIN_USER" ] && [ -n "$ADMIN_PASS" ]; then
+  grep -v '^ADMIN_USER=\|^ADMIN_PASS=' .env > .env.tmp || true
+  printf 'ADMIN_USER=%s\nADMIN_PASS=%s\n' "$ADMIN_USER" "$ADMIN_PASS" >> .env.tmp
+  mv .env.tmp .env; chmod 600 .env
+fi
+grep -q '^ADMIN_USER=.\+' .env || echo "   NOTE: ADMIN_USER / ADMIN_PASS not set - admin login will not exist"
 set -a; . ./.env; set +a
 
 echo "== 3/4 Stopping old processes (if any)"
