@@ -8,12 +8,20 @@ ROOT="$(pwd)"
 mkdir -p logs data
 
 echo "== 1/4 Checking Python packages"
-if command -v pkg >/dev/null 2>&1; then          # Termux
+HAVE_PD=0
+python -c "import numpy, pandas" 2>/dev/null && HAVE_PD=1
+if [ "$HAVE_PD" = 0 ] && command -v pkg >/dev/null 2>&1; then   # Termux: prebuilt packages (no slow compile)
   pkg install -y python >/dev/null 2>&1 || true
-  python -c "import numpy, pandas" 2>/dev/null || pkg install -y python-numpy python-pandas || true
+  pkg install -y python-numpy 2>/dev/null || true
+  pkg install -y tur-repo 2>/dev/null && pkg install -y python-pandas 2>/dev/null || true
+  python -c "import numpy, pandas" 2>/dev/null && HAVE_PD=1
 fi
-python -c "import numpy, pandas" 2>/dev/null || python -m pip install pandas numpy
-python -c "import numpy, pandas" 2>/dev/null || { echo "ERROR: pandas/numpy could not be installed."; exit 1; }
+if [ "$HAVE_PD" = 0 ] && ! command -v pkg >/dev/null 2>&1; then
+  python -m pip install pandas numpy && HAVE_PD=1 || true
+fi
+if [ "$HAVE_PD" = 0 ]; then
+  echo "   WARNING: pandas/numpy not available - backend (login/register/keys) will run, AI signal engine will be skipped"
+fi
 
 echo "== 2/4 Secrets (.env)"
 if [ ! -f .env ]; then
@@ -53,10 +61,14 @@ PY
 then
   echo "ERROR: backend did not start. Last log lines:"; tail -n 15 logs/backend.log; exit 1
 fi
-cd engine
-nohup python run_engine.py > ../logs/engine.log 2>&1 < /dev/null &
-echo $! > ../data/engine.pid
-cd ..
+if [ "$HAVE_PD" = 1 ]; then
+  cd engine
+  nohup python run_engine.py > ../logs/engine.log 2>&1 < /dev/null &
+  echo $! > ../data/engine.pid
+  cd ..
+else
+  echo "   (engine skipped: no pandas)"
+fi
 
 echo
 echo "=============================================="
